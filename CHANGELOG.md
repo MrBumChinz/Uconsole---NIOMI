@@ -8,6 +8,36 @@ minor versions.
 
 ---
 
+## [0.9.10] — 2026-05-02
+
+Re-enabled offline map tile downloads, this time backed by Stadia Maps
+instead of the previously-disabled CartoDB Dark Matter source.
+Cherry-picked from FusedStamen's PR #5 (`1719bbf`); each player decides
+individually whether to opt in by adding their own free API key.
+
+### Added
+
+- **`watchdogs/tile_manager.py`** — `_load_stadia_key()` reads
+  `STADIA_API_KEY` from `secrets.conf`, `_tile_url()` builds the
+  Alidade Smooth Dark tile URL with the key appended. User-Agent
+  string updated.
+- **`watchdogs/app.py`** — removed the WIP/disabled gate from the
+  `_dl_map` handler. `SYSTEM > Download Map` now actually downloads;
+  pressing `[m]` again cancels in-flight. Menu label dropped its
+  `(WIP)` suffix.
+- **`secrets.conf.example`** — documents `STADIA_API_KEY=…`. Without
+  it the Download Map entry tells the player to add one (free account
+  at stadiamaps.com, no bulk-download restrictions on the personal
+  tier).
+
+### Verified
+
+- 44 tiles downloaded over Watertown MA on the contributor's uConsole
+  CM4, zero errors, tiles render under the existing radar/markers
+  overlay (per PR #5 description).
+
+---
+
 ## [0.9.9] — 2026-05-02
 
 Two community contributions cherry-picked from FusedStamen's fork —
@@ -72,13 +102,7 @@ FusedStamen's `main` branch beyond the target commit:
   AIO v2 hardware; needs explicit AIO v1 vs v2 branching.
 - `fix: skip active session in _pending_sessions …` — duplicates the
   fix already shipped as 0.9.6 (different code site, same intent).
-- `feat: enable offline map download via Stadia Maps` (PR #5) —
-  introduces an external API key requirement (`STADIA_API_KEY` in
-  `secrets.conf`, free account on stadiamaps.com). Re-enables a WIP
-  feature with a new dependency, deliberately deferred.
-
-PRs #4 and #6 closed with cherry-pick reference; PR #5 closed,
-re-open with a docs-only follow-up if the Stadia approach is wanted.
+PRs #4, #5 and #6 closed with cherry-pick reference.
 
 ---
 
@@ -764,6 +788,7 @@ The major pre-release milestones were:
 - **Bruce Firmware integration** — pull request to upstream
   `BruceDevices/firmware` adding native upload to wdgwars.pl
 
+[0.9.10]: https://github.com/LOCOSP/WatchDogsGo/compare/v0.9.9...v0.9.10
 [0.9.9]: https://github.com/LOCOSP/WatchDogsGo/compare/v0.9.8...v0.9.9
 [0.9.8]: https://github.com/LOCOSP/WatchDogsGo/compare/v0.9.7...v0.9.8
 [0.9.7]: https://github.com/LOCOSP/WatchDogsGo/compare/v0.9.6...v0.9.7
