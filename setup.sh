@@ -2,7 +2,7 @@
 # =============================================================================
 # ESP32 Watch Dogs — Full Setup Script
 # Creates venv, installs all dependencies, checks system requirements.
-# Usage: ./setup.sh  (or called automatically by run.sh)
+# Usage: ./setup.sh  (or called automatically by run.sh / install)
 # =============================================================================
 
 set -euo pipefail
@@ -21,6 +21,21 @@ warn() { echo -e "  ${YELLOW}[!!]${NC} $1"; }
 fail() { echo -e "  ${RED}[FAIL]${NC} $1"; }
 info() { echo -e "  ${CYAN}[..]${NC} $1"; }
 
+# All output of pip / apt is captured here so failures show real errors,
+# not just "[error] setup.sh failed - see errors above" with nothing above.
+PIP_LOG="/tmp/watchdogs-pip-$$.log"
+APT_LOG="/tmp/watchdogs-apt-$$.log"
+: > "$PIP_LOG"; : > "$APT_LOG"
+
+dump_log_on_fail() {
+    local what="$1" log="$2"
+    fail "$what failed — last 25 lines of $log:"
+    echo "----------------------------------------"
+    tail -25 "$log"
+    echo "----------------------------------------"
+    echo "  Full log preserved at: $log"
+}
+
 echo ""
 echo -e "${CYAN}========================================${NC}"
 echo -e "${CYAN}  ESP32 Watch Dogs — Setup${NC}"
@@ -29,32 +44,116 @@ echo ""
 
 ERRORS=0
 
+# --- 0. Internet connectivity ---
+echo "[0/8] Checking internet connectivity..."
+if ping -c 1 -W 3 github.com &>/dev/null || ping -c 1 -W 3 1.1.1.1 &>/dev/null; then
+    ok "Internet OK"
+else
+    fail "Cannot reach github.com or 1.1.1.1 — check network/DNS"
+    exit 1
+fi
+
 # --- 1. Python 3 ---
-echo "[1/7] Checking Python..."
+echo "[1/8] Checking Python..."
 if command -v python3 &>/dev/null; then
     PY_VER=$(python3 --version 2>&1)
     ok "Found $PY_VER"
 else
-    fail "python3 not found! Install Python 3.10+"
-    ERRORS=$((ERRORS + 1))
+    fail "python3 not found! Install Python 3.10+ (e.g. apt install python3)"
+    exit 1
 fi
 
 # --- 2. venv module ---
-echo "[2/7] Checking venv module..."
+echo "[2/8] Checking venv module..."
 if python3 -c "import venv" 2>/dev/null; then
     ok "venv available"
 else
-    warn "venv not available — trying to install..."
+    warn "venv not available — installing python3-venv..."
     if command -v apt-get &>/dev/null; then
-        sudo apt-get install -y python3-venv 2>/dev/null && ok "Installed python3-venv" || fail "Could not install python3-venv"
+        sudo apt-get install -y python3-venv >>"$APT_LOG" 2>&1 \
+            && ok "Installed python3-venv" \
+            || { dump_log_on_fail "python3-venv install" "$APT_LOG"; ERRORS=$((ERRORS+1)); }
     else
         fail "Install python3-venv manually"
         ERRORS=$((ERRORS + 1))
     fi
 fi
 
-# --- 3. Create/update venv ---
-echo "[3/7] Setting up virtual environment..."
+# --- 3. System packages (apt) ---
+# CRITICAL: must run BEFORE pip install so build deps are available for
+# packages that compile from source (dbus-python, PyNaCl, sometimes pyxel
+# on bleeding-edge Python on ARM64 where prebuilt wheels aren't available).
+echo "[3/8] Installing system packages (build deps + libs + tools)..."
+if command -v apt-get &>/dev/null; then
+    # Core deps — required on every Debian/Ubuntu/RPi system
+    CORE_PKGS=(
+        # Build tooling and headers (for pip packages compiling from source)
+        build-essential python3-dev python3-venv pkg-config curl ca-certificates
+        # Dev headers needed by specific Python wheels:
+        libdbus-1-dev libglib2.0-dev   # dbus-python
+        libsodium-dev                  # PyNaCl
+        libffi-dev libssl-dev          # cryptography, indirect deps
+        # SDL2 for pyxel (game engine)
+        libsdl2-dev libsdl2-image-dev
+        # Native Python bindings (linked into venv in step 6)
+        python3-gi gir1.2-glib-2.0     # BlueZ pairing agent
+        # System tools shelled out to by the game
+        tcpdump aircrack-ng iw rtl-433
+        bluez bluez-tools pulseaudio-utils
+        # Build deps for dump1090 (built from source in step 7)
+        librtlsdr-dev git
+    )
+
+    # RPi-only packages — skipped on non-RPi systems (no fail)
+    RPI_PKGS=(
+        python3-rpi-lgpio python3-lgpio   # CM5/RPi5 GPIO for LoRa
+        raspi-utils                       # provides pinctrl
+    )
+
+    SYS_PKGS=("${CORE_PKGS[@]}")
+    if [ -f /sys/firmware/devicetree/base/model ] && \
+       grep -qi 'raspberry\|clockwork' /sys/firmware/devicetree/base/model 2>/dev/null; then
+        SYS_PKGS+=("${RPI_PKGS[@]}")
+    fi
+
+    MISSING=()
+    for pkg in "${SYS_PKGS[@]}"; do
+        dpkg -s "$pkg" &>/dev/null || MISSING+=("$pkg")
+    done
+
+    if [ ${#MISSING[@]} -gt 0 ]; then
+        info "apt-get update..."
+        sudo apt-get update >>"$APT_LOG" 2>&1 \
+            || warn "apt-get update had errors (see $APT_LOG) — continuing"
+
+        info "Installing ${#MISSING[@]} packages: ${MISSING[*]}"
+        if sudo apt-get install -y "${MISSING[@]}" >>"$APT_LOG" 2>&1 ; then
+            ok "System packages installed"
+        else
+            # Sometimes apt returns non-zero but most packages installed.
+            # Re-check what's still missing for a clear error.
+            STILL_MISSING=()
+            for pkg in "${MISSING[@]}"; do
+                dpkg -s "$pkg" &>/dev/null || STILL_MISSING+=("$pkg")
+            done
+            if [ ${#STILL_MISSING[@]} -gt 0 ]; then
+                dump_log_on_fail "apt install" "$APT_LOG"
+                fail "Still missing: ${STILL_MISSING[*]}"
+                ERRORS=$((ERRORS + 1))
+            else
+                warn "apt reported errors but all packages present (see $APT_LOG)"
+                ok "System packages installed"
+            fi
+        fi
+    else
+        ok "All system packages already present"
+    fi
+else
+    warn "Not Debian/Ubuntu — install build deps + SDL2 manually"
+fi
+
+# --- 4. Virtual environment ---
+echo "[4/8] Setting up virtual environment..."
 if [ ! -d ".venv" ]; then
     info "Creating .venv..."
     python3 -m venv .venv 2>/dev/null || python3 -m venv .venv --without-pip
@@ -63,7 +162,6 @@ else
     ok ".venv exists"
 fi
 
-# Bootstrap pip if missing
 if [ ! -f ".venv/bin/pip" ] && [ ! -f ".venv/bin/pip3" ]; then
     info "Bootstrapping pip..."
     curl -sS https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py
@@ -72,73 +170,81 @@ if [ ! -f ".venv/bin/pip" ] && [ ! -f ".venv/bin/pip3" ]; then
     ok "pip installed"
 fi
 
-# --- 4. Install Python dependencies ---
-echo "[4/7] Installing Python packages..."
-.venv/bin/pip install --upgrade pip --quiet 2>/dev/null
-.venv/bin/pip install -r requirements.txt --quiet 2>/dev/null
-ok "pip install complete"
+# --- 5. Python packages ---
+echo "[5/8] Installing Python packages..."
 
-# Link system rpi-lgpio into venv (RPi.GPIO shim for LoRaRF on newer SoCs)
-# pip install LoRaRF pulls old RPi.GPIO 0.7.1 which doesn't know CM5.
-# System python3-rpi-lgpio works — always force symlink AFTER pip install.
-# CM4 on Bullseye: old RPi.GPIO works fine, no symlink needed.
-# CM5 / RPi5 on Bookworm/Trixie: MUST use rpi-lgpio.
-if [[ "$(uname)" == "Linux" ]]; then
-    # Install rpi-lgpio if not present (needed for RPi5/CM5)
-    if ! python3 -c "import rpi_lgpio" 2>/dev/null; then
-        if command -v apt-get &>/dev/null; then
-            info "Installing python3-rpi-lgpio (RPi5/CM5 GPIO support)..."
-            sudo apt-get install -y python3-rpi-lgpio python3-lgpio 2>/dev/null || true
-        fi
+# Run pip silently to keep output clean. On failure, dump the tail of the
+# log — never silently swallow errors like the previous '--quiet 2>/dev/null'
+# pattern did (that's why nobody could ever see why their install failed).
+pip_run() {
+    local desc="$1"; shift
+    info "$desc"
+    if .venv/bin/pip "$@" >>"$PIP_LOG" 2>&1 ; then
+        ok "$desc"
+        return 0
+    else
+        dump_log_on_fail "$desc" "$PIP_LOG"
+        return 1
     fi
+}
 
+if ! pip_run "Upgrading pip + wheel + setuptools" install --upgrade pip wheel setuptools ; then
+    ERRORS=$((ERRORS + 1))
+fi
+
+if ! pip_run "Installing requirements.txt" install -r requirements.txt ; then
+    fail "Common causes:"
+    fail "  - missing apt build deps (re-check step [3] errors above)"
+    fail "  - Python $PY_VER too new for some wheels"
+    fail "  - intermittent network / PyPI timeout (re-run setup.sh)"
+    ERRORS=$((ERRORS + 1))
+fi
+
+# --- 6. Link system Python modules into venv ---
+# rpi-lgpio and python3-gi ship native .so files via apt that pip can't
+# easily rebuild. Linking them in lets the venv use them directly.
+# pip install LoRaRF pulls old RPi.GPIO 0.7.1 which doesn't know CM5 — we
+# rm that copy and link the apt one in.
+echo "[6/8] Linking system Python modules into venv..."
+if [[ "$(uname)" == "Linux" ]]; then
     if [ -d "/usr/lib/python3/dist-packages/RPi" ] && \
        [ -f "/usr/lib/python3/dist-packages/RPi/GPIO/__init__.py" ]; then
-        VENV_SP=".venv/lib/python3.*/site-packages"
-        for sp in $VENV_SP; do
+        for sp in .venv/lib/python3.*/site-packages; do
             if [ -d "$sp" ]; then
-                # Force remove pip-installed RPi.GPIO and replace with system rpi-lgpio
                 rm -rf "$sp/RPi" "$sp/RPi.GPIO"* 2>/dev/null
                 ln -sf /usr/lib/python3/dist-packages/RPi "$sp/RPi"
                 ln -sf /usr/lib/python3/dist-packages/lgpio.py "$sp/lgpio.py" 2>/dev/null
                 for so in /usr/lib/python3/dist-packages/_lgpio*.so; do
                     [ -f "$so" ] && ln -sf "$so" "$sp/$(basename $so)"
                 done
-                ok "rpi-lgpio force-linked into venv (LoRa GPIO support)"
+                ok "rpi-lgpio linked into venv (LoRa GPIO)"
                 break
             fi
         done
     else
-        info "System rpi-lgpio not available — using pip RPi.GPIO (OK for CM4/RPi4)"
+        info "rpi-lgpio not present (non-RPi system) — skipping"
     fi
 
-    # Link system python3-gi (gi.repository.GLib) into venv. Same rationale
-    # as rpi-lgpio above — system package has the native .so bindings that
-    # pip can't easily rebuild, and our venv doesn't use
-    # --system-site-packages.
     if [ -d "/usr/lib/python3/dist-packages/gi" ]; then
-        VENV_SP=".venv/lib/python3.*/site-packages"
-        for sp in $VENV_SP; do
+        for sp in .venv/lib/python3.*/site-packages; do
             if [ -d "$sp" ] && [ ! -e "$sp/gi" ]; then
                 ln -sf /usr/lib/python3/dist-packages/gi "$sp/gi"
-                # _gi / _gi_cairo C extensions — PyGObject's native bindings
                 for so in /usr/lib/python3/dist-packages/_gi*.so \
                           /usr/lib/python3/dist-packages/_gi_cairo*.so; do
                     [ -f "$so" ] && ln -sf "$so" "$sp/$(basename $so)"
                 done
-                # pygobject_* helper installed alongside gi in some distros
                 for extra in pygobject_compat.py; do
                     f="/usr/lib/python3/dist-packages/$extra"
                     [ -f "$f" ] && ln -sf "$f" "$sp/$extra"
                 done
-                ok "python3-gi linked into venv (BlueZ pairing agent)"
+                ok "python3-gi linked into venv (BlueZ pairing)"
                 break
             fi
         done
     fi
 fi
 
-# Verify critical imports (required)
+# Verify required imports
 MISSING_REQ=""
 .venv/bin/python3 -c "import pyxel" 2>/dev/null || MISSING_REQ="$MISSING_REQ pyxel"
 .venv/bin/python3 -c "import serial" 2>/dev/null || MISSING_REQ="$MISSING_REQ pyserial"
@@ -148,6 +254,7 @@ if [ -z "$MISSING_REQ" ]; then
     ok "Required Python imports verified"
 else
     fail "Missing required packages:$MISSING_REQ"
+    fail "Check pip log: $PIP_LOG"
     ERRORS=$((ERRORS + 1))
 fi
 
@@ -157,8 +264,7 @@ MISSING_OPT=""
 .venv/bin/python3 -c "import netifaces" 2>/dev/null || MISSING_OPT="$MISSING_OPT netifaces"
 .venv/bin/python3 -c "import bleak" 2>/dev/null || MISSING_OPT="$MISSING_OPT bleak"
 .venv/bin/python3 -c "import dbus" 2>/dev/null || MISSING_OPT="$MISSING_OPT dbus-python"
-.venv/bin/python3 -c "from gi.repository import GLib" 2>/dev/null || \
-    MISSING_OPT="$MISSING_OPT python3-gi(apt)"
+.venv/bin/python3 -c "from gi.repository import GLib" 2>/dev/null || MISSING_OPT="$MISSING_OPT python3-gi"
 .venv/bin/python3 -c "import LoRaRF" 2>/dev/null || MISSING_OPT="$MISSING_OPT LoRaRF"
 .venv/bin/python3 -c "import nacl" 2>/dev/null || MISSING_OPT="$MISSING_OPT PyNaCl"
 
@@ -169,142 +275,62 @@ else
     warn "Some attacks may not work (MITM, Dragon Drain, BlueDucky, RACE, LoRa)"
 fi
 
-# --- 5. System libraries (SDL2 for pyxel) ---
-echo "[5/7] Checking system libraries..."
-if command -v apt-get &>/dev/null; then
-    # Debian/Ubuntu/Raspberry Pi
-    PKGS_NEEDED=""
-    dpkg -s libsdl2-dev &>/dev/null 2>&1 || PKGS_NEEDED="$PKGS_NEEDED libsdl2-dev"
-    dpkg -s libsdl2-image-dev &>/dev/null 2>&1 || PKGS_NEEDED="$PKGS_NEEDED libsdl2-image-dev"
+# --- 7. dump1090 from source + aiov2_ctl (uConsole only) ---
+echo "[7/8] Building dump1090 + uConsole tools..."
 
-    if [ -n "$PKGS_NEEDED" ]; then
-        info "Installing:$PKGS_NEEDED"
-        sudo apt-get install -y $PKGS_NEEDED 2>/dev/null && ok "System libs installed" || warn "Could not install system libs (game may still work)"
+if ! command -v dump1090 &>/dev/null; then
+    info "Building FlightAware dump1090 from source..."
+    TMP=$(mktemp -d)
+    if git clone --depth=1 https://github.com/flightaware/dump1090.git "$TMP/dump1090" >>"$APT_LOG" 2>&1 \
+       && (cd "$TMP/dump1090" && make -j"$(nproc)" >>"$APT_LOG" 2>&1) \
+       && sudo cp "$TMP/dump1090/dump1090" /usr/local/bin/ ; then
+        ok "dump1090 installed (/usr/local/bin/dump1090)"
     else
-        ok "SDL2 libraries present"
+        warn "dump1090 build failed — ADS-B Radar will not work (see $APT_LOG)"
     fi
-elif [[ "$(uname)" == "Darwin" ]]; then
-    ok "macOS — SDL2 bundled with pyxel"
+    rm -rf "$TMP"
 else
-    warn "Unknown platform — ensure SDL2 is installed"
+    ok "dump1090 present ($(command -v dump1090))"
 fi
 
-# --- 6. System tools (for advanced attacks) ---
-echo "[6/7] Checking system tools..."
-if command -v apt-get &>/dev/null; then
-    SYS_NEEDED=""
-    command -v tcpdump &>/dev/null || SYS_NEEDED="$SYS_NEEDED tcpdump"
-    command -v airmon-ng &>/dev/null || SYS_NEEDED="$SYS_NEEDED aircrack-ng"
-    # `iw` is used by Dragon Drain (monitor mode check) and serial_manager
-    # (bridge interface detection). Preinstalled on Raspbian/RPi OS but not
-    # on a clean Debian/Ubuntu server, so request it explicitly.
-    command -v iw &>/dev/null || SYS_NEEDED="$SYS_NEEDED iw"
-    command -v rtl_433 &>/dev/null || SYS_NEEDED="$SYS_NEEDED rtl-433"
-    command -v hciconfig &>/dev/null || SYS_NEEDED="$SYS_NEEDED bluez bluez-tools"
-    command -v pactl &>/dev/null || SYS_NEEDED="$SYS_NEEDED pulseaudio-utils"
-    # pinctrl is used by AIO v2 GPIO toggles (GPS/LoRa/SDR/USB power rails)
-    command -v pinctrl &>/dev/null || SYS_NEEDED="$SYS_NEEDED raspi-utils"
-    # python3-gi provides gi.repository.GLib, required by the BlueZ pairing
-    # agent for the PipBoy watch. It's distributed as a system package (can't
-    # go in requirements.txt — PyGObject on PyPI needs libgirepository1.0-dev
-    # + gobject-introspection anyway, same native deps). Symlinked into the
-    # game's venv a few lines below, same pattern as rpi-lgpio.
-    python3 -c "from gi.repository import GLib" 2>/dev/null || \
-        SYS_NEEDED="$SYS_NEEDED python3-gi gir1.2-glib-2.0"
-
-    if [ -n "$SYS_NEEDED" ]; then
-        info "Installing:$SYS_NEEDED"
-        sudo apt-get install -y $SYS_NEEDED 2>/dev/null && ok "System tools installed" || warn "Could not install:$SYS_NEEDED"
-    else
-        ok "All system tools present (tcpdump, aircrack-ng, iw, rtl_433, bluez, pulseaudio-utils, pinctrl)"
-    fi
-
-    # --- dump1090 (FlightAware fork) -----------------------------------------
-    # The classic `dump1090-mutability` apt package has been an archived
-    # upstream since 2018 (no fixes, no RTL-SDR v4 support). Build the
-    # actively-maintained FlightAware fork from source — the binary still
-    # installs as `dump1090`, so the game's `shutil.which("dump1090")` and
-    # the `dump1090 --net --quiet` subprocess call work unchanged.
-    if ! command -v dump1090 &>/dev/null; then
-        info "dump1090 not found — building FlightAware fork from source..."
-        sudo apt-get install -y librtlsdr-dev pkg-config build-essential git \
-            2>/dev/null || warn "Could not install dump1090 build deps"
+# AIO v2 control (uConsole only)
+if command -v pinctrl &>/dev/null && [ -f /sys/firmware/devicetree/base/model ]; then
+    if ! command -v aiov2_ctl &>/dev/null; then
+        info "Installing aiov2_ctl from GitHub (uConsole AIO v2 hardware)..."
+        sudo apt-get install -y python3-pyqt6 git >>"$APT_LOG" 2>&1 || true
         TMP=$(mktemp -d)
-        if git clone --depth=1 https://github.com/flightaware/dump1090.git \
-                "$TMP/dump1090" >/dev/null 2>&1; then
-            if (cd "$TMP/dump1090" && make -j"$(nproc)" >/dev/null 2>&1 \
-                    && sudo cp dump1090 /usr/local/bin/); then
-                ok "dump1090 (FlightAware) built and installed to /usr/local/bin"
-            else
-                warn "dump1090 build failed — ADS-B radar will be disabled"
-            fi
+        if git clone --depth=1 https://github.com/hackergadgets/aiov2_ctl.git "$TMP/aiov2_ctl" >>"$APT_LOG" 2>&1 \
+           && (cd "$TMP/aiov2_ctl" && sudo python3 ./aiov2_ctl.py --install >>"$APT_LOG" 2>&1) ; then
+            ok "aiov2_ctl installed"
         else
-            warn "Could not clone flightaware/dump1090 — ADS-B radar disabled"
+            warn "aiov2_ctl install failed — AIO toggles disabled (see $APT_LOG)"
         fi
-        rm -rf "$TMP" 2>/dev/null
+        rm -rf "$TMP"
     else
-        ok "dump1090 present ($(command -v dump1090))"
-    fi
-
-    # AIO v2 control (uConsole only — optional, install only if pinctrl exists
-    # AND the user is on a Raspberry Pi-class device).
-    # Official install method: https://github.com/hackergadgets/aiov2_ctl/
-    #   git clone + sudo python3 ./aiov2_ctl.py --install
-    if command -v pinctrl &>/dev/null && [ -f /sys/firmware/devicetree/base/model ]; then
-        if ! command -v aiov2_ctl &>/dev/null; then
-            info "Installing aiov2_ctl from GitHub (uConsole AIO v2 hardware control)..."
-            sudo apt-get install -y python3-pyqt6 git 2>/dev/null || true
-            TMP=$(mktemp -d)
-            if git clone --depth=1 https://github.com/hackergadgets/aiov2_ctl.git "$TMP/aiov2_ctl" 2>/dev/null; then
-                if (cd "$TMP/aiov2_ctl" && sudo python3 ./aiov2_ctl.py --install >/dev/null 2>&1); then
-                    ok "aiov2_ctl installed"
-                else
-                    warn "aiov2_ctl installer failed — AIO toggles will be disabled"
-                fi
-            else
-                warn "Could not clone aiov2_ctl repo — AIO toggles will be disabled"
-            fi
-            rm -rf "$TMP" 2>/dev/null
-        else
-            ok "aiov2_ctl present (AIO v2 control available)"
-        fi
-    fi
-else
-    # Check existence only
-    TOOLS_FOUND=""
-    command -v tcpdump &>/dev/null && TOOLS_FOUND="$TOOLS_FOUND tcpdump"
-    command -v airmon-ng &>/dev/null && TOOLS_FOUND="$TOOLS_FOUND aircrack-ng"
-    command -v dump1090 &>/dev/null && TOOLS_FOUND="$TOOLS_FOUND dump1090"
-    command -v rtl_433 &>/dev/null && TOOLS_FOUND="$TOOLS_FOUND rtl_433"
-    command -v hciconfig &>/dev/null && TOOLS_FOUND="$TOOLS_FOUND hciconfig"
-    if [ -n "$TOOLS_FOUND" ]; then
-        ok "Found:$TOOLS_FOUND"
-    else
-        warn "System tools not found — install manually for full feature support"
+        ok "aiov2_ctl present"
     fi
 fi
 
-# --- 7. Permissions & files ---
-echo "[7/7] Checking permissions..."
+# --- 8. Permissions and data directories ---
+echo "[8/8] Permissions and data directories..."
 [ -f "run.sh" ] && chmod +x run.sh
 [ -f "setup.sh" ] && chmod +x setup.sh
 [ -f "watchdogs-launcher" ] && chmod +x watchdogs-launcher
 ok "Scripts executable"
 
-# Check serial access (Linux)
 if [[ "$(uname)" == "Linux" ]]; then
-    if groups | grep -qE '(dialout|tty)'; then
-        ok "User in dialout/tty group (serial access)"
+    TARGET_USER="${SUDO_USER:-$(whoami)}"
+    if id -nG "$TARGET_USER" 2>/dev/null | grep -qE '\b(dialout|tty)\b'; then
+        ok "User '$TARGET_USER' in dialout/tty group (serial access)"
     else
-        warn "User not in dialout group — ESP32 serial may need sudo"
+        warn "User '$TARGET_USER' not in dialout group"
+        warn "  Fix: sudo usermod -aG dialout $TARGET_USER  (then log out + log in)"
     fi
 fi
 
-# Create runtime directories
 mkdir -p loot maps plugins firmware_cache
 ok "Data directories ready (loot, maps, plugins, firmware_cache)"
 
-# Create secrets.conf from template if missing
 if [ ! -f "secrets.conf" ] && [ -f "secrets.conf.example" ]; then
     cp secrets.conf.example secrets.conf
     chmod 600 secrets.conf 2>/dev/null || true
@@ -320,12 +346,17 @@ if [ $ERRORS -eq 0 ]; then
     echo ""
     echo "  Run the game:  sudo ./run.sh"
     echo ""
+    rm -f "$PIP_LOG" "$APT_LOG" 2>/dev/null
 else
     echo -e "${RED}========================================${NC}"
     echo -e "${RED}  Setup finished with $ERRORS error(s)${NC}"
     echo -e "${RED}========================================${NC}"
     echo ""
-    echo "  Fix the errors above, then run setup.sh again."
+    echo "  Logs preserved for debugging:"
+    [ -s "$PIP_LOG" ] && echo "    pip:  $PIP_LOG"
+    [ -s "$APT_LOG" ] && echo "    apt:  $APT_LOG"
+    echo ""
+    echo "  Fix the errors above, then re-run: sudo bash setup.sh"
     echo ""
     exit 1
 fi

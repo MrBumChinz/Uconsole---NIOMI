@@ -21,8 +21,13 @@ warn() {
 
 # Pre-flight checks
 [ "$(uname)" = "Linux" ] || err "Only Linux is supported (uConsole / Raspberry Pi OS / Debian / Ubuntu)."
-command -v git >/dev/null 2>&1 || err "git is required. Install with: apt-get install git"
+command -v git >/dev/null 2>&1 || err "git is required. Install with: sudo apt-get install git"
 command -v bash >/dev/null 2>&1 || err "bash is required."
+
+# Internet sanity check (saves a confusing failure mid-clone on offline systems)
+if ! ping -c 1 -W 3 github.com >/dev/null 2>&1 && ! ping -c 1 -W 3 1.1.1.1 >/dev/null 2>&1; then
+    err "No internet (cannot reach github.com or 1.1.1.1). Check your network."
+fi
 
 # Resolve install user (works under sudo and non-sudo)
 TARGET_USER="${SUDO_USER:-$(whoami)}"
@@ -30,6 +35,8 @@ TARGET_HOME=$(getent passwd "$TARGET_USER" | cut -d: -f6)
 [ -n "$TARGET_HOME" ] || err "Cannot resolve home directory for user '$TARGET_USER'."
 
 INSTALL_DIR="${INSTALL_DIR:-$TARGET_HOME/python/WatchDogsGo}"
+REPO_URL="https://github.com/LOCOSP/WatchDogsGo.git"
+REPO_BRANCH="main"
 
 echo -e "${CYAN}"
 echo "  ██╗    ██╗ █████╗ ████████╗ ██████╗██╗  ██╗"
@@ -48,7 +55,15 @@ echo -e "${GREEN}[1/3]${NC} Cloning repository..."
 if [ -d "$INSTALL_DIR/.git" ]; then
     echo "  Directory exists — pulling latest..."
     cd "$INSTALL_DIR" || err "Cannot enter $INSTALL_DIR"
-    if ! sudo -u "$TARGET_USER" git pull --ff-only origin master; then
+
+    # Detect the actual default remote branch — repo may use main OR master
+    # depending on when it was first cloned. Hardcoding either name breaks
+    # for users on the other one (this caused real install failures before).
+    DEFAULT_BRANCH=$(sudo -u "$TARGET_USER" git remote show origin 2>/dev/null \
+        | awk '/HEAD branch/ {print $NF}')
+    [ -n "$DEFAULT_BRANCH" ] || DEFAULT_BRANCH="$REPO_BRANCH"
+
+    if ! sudo -u "$TARGET_USER" git pull --ff-only origin "$DEFAULT_BRANCH"; then
         warn "git pull failed — continuing with existing copy"
     fi
 elif [ -d "$INSTALL_DIR" ]; then
@@ -56,7 +71,7 @@ elif [ -d "$INSTALL_DIR" ]; then
 else
     mkdir -p "$(dirname "$INSTALL_DIR")"
     chown "$TARGET_USER:$TARGET_USER" "$(dirname "$INSTALL_DIR")" 2>/dev/null || true
-    if ! sudo -u "$TARGET_USER" git clone https://github.com/LOCOSP/WatchDogsGo.git "$INSTALL_DIR"; then
+    if ! sudo -u "$TARGET_USER" git clone --branch "$REPO_BRANCH" "$REPO_URL" "$INSTALL_DIR"; then
         err "git clone failed — check internet connection and try again"
     fi
     cd "$INSTALL_DIR" || err "Cannot enter $INSTALL_DIR after clone"
