@@ -8,6 +8,53 @@ minor versions.
 
 ---
 
+## [0.9.12] — 2026-06-04
+
+Bugfix for the **Captured Passwords** screen in `LOOT DATABASE`. A user
+reported the count and the list were inflated with every Evil Twin /
+Evil Portal log line — `AP: Client connected`, `Portal: Client count =`,
+`Client connected to portal — switching to channel …` — instead of only
+actual POST credentials.
+
+In the screenshot the screen showed `Total: 14` for a session that had
+only **2** real `Received POST data: email=…&password=…` captures.
+
+### Root cause
+
+The full Evil Twin / Portal event stream is written to
+`<session>/evil_twin_capture.log` and `<session>/portal_passwords.log`
+for forensics. Two sites then treated those files as "list of
+passwords" without filtering:
+
+- `LootManager._scan_session_dir` counted every line in the log file
+  as one capture (`sum(1 for _ in open(...))`), so the all-time
+  `passwords` / `et_captures` totals over-reported by the ratio of
+  diagnostic events to credentials.
+- `WatchDogsGame._load_all_captures` (the data source behind the
+  Captured Passwords screen) iterated every line, ran
+  `_parse_post_fields()` on it, and **on no match still appended the
+  raw decoded line** as an entry — so connect/disconnect chatter
+  showed up under "CREDENTIALS".
+
+### Fixed
+
+- `watchdogs/loot_manager.py` — both counters (`passwords`,
+  `et_captures`) now only count lines containing `received post` or
+  `form submission` (case-insensitive). The log files themselves are
+  unchanged — they keep the full event timeline.
+- `watchdogs/app.py` — `_load_all_captures` drops the `else` branch
+  that was appending non-credential lines. Only lines that parse as
+  POST form data make it onto the Captured Passwords screen now.
+
+### Migration
+
+None needed. Both code paths re-scan session dirs on launch, so once
+the user `git pull`s and starts the game the inflated count corrects
+itself — the screenshot's `Total: 14` will become the real `Total: 2`
+without touching anything on disk.
+
+---
+
 ## [0.9.11] — 2026-05-08
 
 Quality-of-life follow-up to 0.9.10. The Stadia Maps tile endpoint
@@ -819,6 +866,7 @@ The major pre-release milestones were:
 - **Bruce Firmware integration** — pull request to upstream
   `BruceDevices/firmware` adding native upload to wdgwars.pl
 
+[0.9.12]: https://github.com/LOCOSP/WatchDogsGo/compare/v0.9.11...v0.9.12
 [0.9.11]: https://github.com/LOCOSP/WatchDogsGo/compare/v0.9.10...v0.9.11
 [0.9.10]: https://github.com/LOCOSP/WatchDogsGo/compare/v0.9.9...v0.9.10
 [0.9.9]: https://github.com/LOCOSP/WatchDogsGo/compare/v0.9.8...v0.9.9

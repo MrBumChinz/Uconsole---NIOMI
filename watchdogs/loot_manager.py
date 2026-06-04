@@ -265,13 +265,27 @@ class LootManager:
         pw_file = session_path / "portal_passwords.log"
         if pw_file.is_file():
             try:
-                counts["passwords"] = sum(1 for _ in open(pw_file, encoding="utf-8"))
+                # Only count lines that contain captured POST form data —
+                # the log file also stores diagnostic events (client connects,
+                # channel switches) which shouldn't inflate the password
+                # count on the loot screen.
+                with open(pw_file, encoding="utf-8") as f:
+                    counts["passwords"] = sum(
+                        1 for line in f
+                        if "received post" in line.lower()
+                        or "form submission" in line.lower())
             except OSError:
                 pass
         et_file = session_path / "evil_twin_capture.log"
         if et_file.is_file():
             try:
-                counts["et_captures"] = sum(1 for _ in open(et_file, encoding="utf-8"))
+                # Same filter as portal_passwords.log above — keep raw events
+                # in the file for forensics but only count actual captures.
+                with open(et_file, encoding="utf-8") as f:
+                    counts["et_captures"] = sum(
+                        1 for line in f
+                        if "received post" in line.lower()
+                        or "form submission" in line.lower())
             except OSError:
                 pass
         mc_nodes_file = session_path / "meshcore_nodes.csv"
