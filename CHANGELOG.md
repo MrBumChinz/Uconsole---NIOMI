@@ -8,6 +8,57 @@ minor versions.
 
 ---
 
+## [0.9.13] — 2026-06-04
+
+Companion to 0.9.12 — handles the transient HTTP 413 the same user
+(dtmcnamara) saw on the larger of two sessions during a sync. Now
+documented and confirmed by the wdgwars admin as a WAF / LVE burst
+event on the shared-host LiteSpeed / Imunify360 layer, **not** a real
+payload size cap (admin tested clean uploads up to 32 MB).
+
+### Background
+
+The 413 response body started with `<!DOCTYPE HTML PUBLIC "-//W3C//DTD H…`
+— HTML 4 doctype = LiteSpeed origin error page, not the Cloudflare
+HTML 5 layout. So the rejection happened **before** the request hit the
+portal app, on the shared-hosting WAF for that specific IP / cadence.
+PHP `post_max_size` is 128 MB, `.htaccess` carries no `LimitRequestBody`,
+and the user successfully posted 15 payloads in a row in the same
+window with sizes 17–90 KB — confirming it's transient, not a fixed
+limit.
+
+### Added
+
+- **`plugins/wardrive_upload.py`** — `HTTPError` handler now also
+  catches `e.code == 413`. Behaviour: exponential backoff retry with
+  delays `[1 s, 5 s, 30 s]` (max 3 attempts). Each retry re-signs a
+  fresh nonce (since the old one would be rejected as stale anyway
+  if the request did reach the app). On success the rest of the
+  upload pipeline runs as usual — totals, badge sync, `_mark_uploaded`
+  honouring the active-session rule from 0.9.6.
+- If all three retries still come back 413, the session is **left in
+  the pending queue** (no `_mark_uploaded`) so the next upload run
+  picks it up. Log line:
+  `HTTP 413 persisted through 3 retries — session left pending`.
+- If a retry returns a *different* HTTP status (e.g. 401 because the
+  user's key expired mid-batch), the loop bails out immediately
+  rather than burning the remaining backoffs on what is clearly not
+  a WAF issue.
+
+### Unchanged
+
+- The 429 (rate-limit) retry path is untouched — it still does a
+  single 5 s wait + one retry. Behaviour confirmed correct since 0.9.5;
+  no reason to bundle that change with this one.
+- Server-side, the admin will replace the bare LiteSpeed HTML 413
+  page with a JSON envelope via `ErrorDocument 413` in `.htaccess`,
+  so future incidents log as `HTTP 413: {"error":"upstream-413",…}`
+  instead of `HTTP 413: <!DOCTYPE HTML PUBLIC "-//W3C//DTD H…`. That
+  change is independent of this client release and lands when the
+  admin ships it.
+
+---
+
 ## [0.9.12] — 2026-06-04
 
 Bugfix for the **Captured Passwords** screen in `LOOT DATABASE`. A user
@@ -866,6 +917,7 @@ The major pre-release milestones were:
 - **Bruce Firmware integration** — pull request to upstream
   `BruceDevices/firmware` adding native upload to wdgwars.pl
 
+[0.9.13]: https://github.com/LOCOSP/WatchDogsGo/compare/v0.9.12...v0.9.13
 [0.9.12]: https://github.com/LOCOSP/WatchDogsGo/compare/v0.9.11...v0.9.12
 [0.9.11]: https://github.com/LOCOSP/WatchDogsGo/compare/v0.9.10...v0.9.11
 [0.9.10]: https://github.com/LOCOSP/WatchDogsGo/compare/v0.9.9...v0.9.10
