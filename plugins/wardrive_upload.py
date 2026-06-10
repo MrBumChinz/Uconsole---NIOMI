@@ -685,6 +685,60 @@ class WardriveUpload(PluginBase):
                                     "for re-upload)", 13)
                     except Exception as e2:
                         self._log_add(f"  Retry failed: {e2}", 8)
+                elif e.code == 413:
+                    # Per wdgwars admin diagnosis (2026-06): the 413 is a
+                    # transient WAF event from the shared-host LiteSpeed /
+                    # Imunify360 layer firing on burst — not a real body-size
+                    # limit. Tested clean up to 32 MB. Exponential backoff
+                    # 1s, 5s, 30s clears it.
+                    backoffs = [1, 5, 30]
+                    for attempt, delay in enumerate(backoffs, start=1):
+                        self._log_add(
+                            f"  HTTP 413 (transient WAF) — "
+                            f"retry {attempt}/{len(backoffs)} in {delay}s...",
+                            10)
+                        _time.sleep(delay)
+                        try:
+                            payload = self._sign_payload({
+                                "networks": networks,
+                                "aircraft": aircraft,
+                                "meshcore_nodes": mc_nodes,
+                            })
+                            req = Request(self._api_url, data=payload,
+                                          method="POST")
+                            req.add_header("Content-Type", "application/json")
+                            req.add_header("X-API-Key", self._api_key)
+                            with _open(req, timeout=90) as resp:
+                                result = json.loads(resp.read().decode())
+                                imp = result.get("imported", 0)
+                                self._log_add(
+                                    f"  Retry {attempt} OK: +{imp}", 11)
+                                self._handle_upload_badges(result)
+                                total_nets += imp
+                                uploaded += 1
+                                if not self._mark_uploaded(session_dir):
+                                    self._log_add(
+                                        "  (active session — kept open "
+                                        "for re-upload)", 13)
+                                break
+                        except HTTPError as e_retry:
+                            if e_retry.code != 413:
+                                self._log_add(
+                                    f"  Retry got HTTP {e_retry.code}, "
+                                    "bailing", 8)
+                                break
+                            # Still 413 — fall through to next backoff
+                        except Exception as e_retry:
+                            self._log_add(
+                                f"  Retry {attempt} failed: {e_retry}", 8)
+                            break
+                    else:
+                        # All retries exhausted without success — session
+                        # stays in pending queue for the next upload run.
+                        self._log_add(
+                            f"  HTTP 413 persisted through "
+                            f"{len(backoffs)} retries — session "
+                            "left pending", 8)
                 else:
                     self._log_add(f"  HTTP {e.code}: {body}", 8)
             except URLError as e:

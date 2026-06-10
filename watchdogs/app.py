@@ -7447,8 +7447,10 @@ class ProjectNiomiApp:
                         fields = self._parse_post_fields(decoded)
                         if fields:
                             entries.append((date_tag, f"[{tag}] {date_tag} {fields}"))
-                        else:
-                            entries.append((date_tag, f"[{tag}] {date_tag} {decoded}"))
+                        # Skip non-credential ET/EP diagnostics (client
+                        # connects, portal counts, channel switches) — they
+                        # live in the log file for forensics but shouldn't
+                        # appear under "Captured Passwords".
                 except OSError:
                     pass
         # Sort newest first (already reversed session order)
