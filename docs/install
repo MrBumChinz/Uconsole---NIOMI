@@ -1,6 +1,6 @@
 #!/bin/bash
-# ESP32 Watch Dogs — one-line installer
-# curl -sL https://locosp.github.io/WatchDogsGo/install | sudo bash
+# NIOMI — The Black Hat — one-line installer
+# curl -sL https://mrbumchinz.github.io/Uconsole---NIOMI/install | sudo bash
 
 set -e
 
@@ -10,42 +10,33 @@ RED='\033[0;31m'
 YELLOW='\033[0;33m'
 NC='\033[0m'
 
-err() {
-    echo -e "${RED}[error]${NC} $1" >&2
-    exit 1
-}
+err() { echo -e "${RED}[error]${NC} $1" >&2; exit 1; }
+warn() { echo -e "${YELLOW}[warn]${NC} $1" >&2; }
 
-warn() {
-    echo -e "${YELLOW}[warn]${NC} $1" >&2
-}
-
-# Pre-flight checks
 [ "$(uname)" = "Linux" ] || err "Only Linux is supported (uConsole / Raspberry Pi OS / Debian / Ubuntu)."
 command -v git >/dev/null 2>&1 || err "git is required. Install with: sudo apt-get install git"
 command -v bash >/dev/null 2>&1 || err "bash is required."
 
-# Internet sanity check (saves a confusing failure mid-clone on offline systems)
 if ! ping -c 1 -W 3 github.com >/dev/null 2>&1 && ! ping -c 1 -W 3 1.1.1.1 >/dev/null 2>&1; then
     err "No internet (cannot reach github.com or 1.1.1.1). Check your network."
 fi
 
-# Resolve install user (works under sudo and non-sudo)
 TARGET_USER="${SUDO_USER:-$(whoami)}"
 TARGET_HOME=$(getent passwd "$TARGET_USER" | cut -d: -f6)
 [ -n "$TARGET_HOME" ] || err "Cannot resolve home directory for user '$TARGET_USER'."
 
-INSTALL_DIR="${INSTALL_DIR:-$TARGET_HOME/python/WatchDogsGo}"
-REPO_URL="https://github.com/LOCOSP/WatchDogsGo.git"
+INSTALL_DIR="${INSTALL_DIR:-$TARGET_HOME/python/niomi}"
+REPO_URL="https://github.com/MrBumChinz/Uconsole---NIOMI.git"
 REPO_BRANCH="main"
 
 echo -e "${CYAN}"
-echo "  ██╗    ██╗ █████╗ ████████╗ ██████╗██╗  ██╗"
-echo "  ██║    ██║██╔══██╗╚══██╔══╝██╔════╝██║  ██║"
-echo "  ██║ █╗ ██║███████║   ██║   ██║     ███████║"
-echo "  ██║███╗██║██╔══██║   ██║   ██║     ██╔══██║"
-echo "  ╚███╔███╔╝██║  ██║   ██║   ╚██████╗██║  ██║"
-echo "   ╚══╝╚══╝ ╚═╝  ╚═╝   ╚═╝    ╚═════╝╚═╝  ╚═╝"
-echo -e "  ${GREEN}DOGS GO${CYAN} — Open-World Hacking RPG${NC}"
+echo "  ███╗   ██╗██╗ ██████╗ ███╗   ███╗██╗"
+echo "  ████╗  ██║██║██╔═══██╗████╗ ████║██║"
+echo "  ██╔██╗ ██║██║██║   ██║██╔████╔██║██║"
+echo "  ██║╚██╗██║██║██║   ██║██║╚██╔╝██║██║"
+echo "  ██║ ╚████║██║╚██████╔╝██║ ╚═╝ ██║██║"
+echo "  ╚═╝  ╚═══╝╚═╝ ╚═════╝ ╚═╝     ╚═╝╚═╝"
+echo -e "  ${GREEN}THE BLACK HAT${CYAN} — Soul Cage Field Operator${NC}"
 echo ""
 echo "  Install dir: $INSTALL_DIR"
 echo "  Target user: $TARGET_USER"
@@ -55,14 +46,9 @@ echo -e "${GREEN}[1/3]${NC} Cloning repository..."
 if [ -d "$INSTALL_DIR/.git" ]; then
     echo "  Directory exists — pulling latest..."
     cd "$INSTALL_DIR" || err "Cannot enter $INSTALL_DIR"
-
-    # Detect the actual default remote branch — repo may use main OR master
-    # depending on when it was first cloned. Hardcoding either name breaks
-    # for users on the other one (this caused real install failures before).
     DEFAULT_BRANCH=$(sudo -u "$TARGET_USER" git remote show origin 2>/dev/null \
         | awk '/HEAD branch/ {print $NF}')
     [ -n "$DEFAULT_BRANCH" ] || DEFAULT_BRANCH="$REPO_BRANCH"
-
     if ! sudo -u "$TARGET_USER" git pull --ff-only origin "$DEFAULT_BRANCH"; then
         warn "git pull failed — continuing with existing copy"
     fi
@@ -87,12 +73,12 @@ echo ""
 echo -e "${GREEN}[3/3]${NC} Creating desktop launcher..."
 DESKTOP_DIR="$TARGET_HOME/Desktop"
 if [ -d "$DESKTOP_DIR" ]; then
-    DESKTOP_FILE="$DESKTOP_DIR/watchdogs.desktop"
+    DESKTOP_FILE="$DESKTOP_DIR/niomi.desktop"
     cat > "$DESKTOP_FILE" << DESKTOP
 [Desktop Entry]
-Name=Watch Dogs Go
-Comment=Open-World Hacking RPG
-Exec=lxterminal --title="ESP32 Watch Dogs" -e bash -c "cd $INSTALL_DIR && sudo -E ./run.sh; read -p 'Press Enter to close...'"
+Name=NIOMI
+Comment=The Black Hat — Soul Cage Field Operator
+Exec=lxterminal --title="NIOMI" -e bash -c "cd $INSTALL_DIR && sudo -E ./run.sh; read -p 'Press Enter to close...'"
 Terminal=false
 Type=Application
 Categories=Game;Security;
@@ -112,11 +98,12 @@ echo -e "${GREEN}╚════════════════════
 echo ""
 echo -e "  ${CYAN}To start:${NC}  cd $INSTALL_DIR && sudo ./run.sh"
 if [ -d "$DESKTOP_DIR" ]; then
-    echo -e "  ${CYAN}Desktop:${NC}  Double-click Watch Dogs Go on desktop"
+    echo -e "  ${CYAN}Desktop:${NC}  Double-click NIOMI on desktop"
 fi
 echo ""
-echo -e "  ${YELLOW}Optional:${NC} edit secrets.conf for API keys (Wigle, WPA-sec)"
+echo -e "  ${YELLOW}Optional:${NC} edit secrets.conf for Soul Cage API key"
 echo -e "           cp secrets.conf.example secrets.conf && nano secrets.conf"
+echo -e "           SC_API_KEY=<your-key-from-soulcage.win/profile>"
 echo ""
 echo -e "  ${GREEN}// real hacking is cooler than simulated${NC}"
 echo ""
