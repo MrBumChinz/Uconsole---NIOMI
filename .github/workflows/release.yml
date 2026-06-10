@@ -1,0 +1,46 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Package source archive
+        run: |
+          TAG=${GITHUB_REF_NAME:-dev}
+          mkdir -p dist
+          # Create a clean source tarball (no .git, no loot, no venv)
+          tar --exclude='.git' \
+              --exclude='.venv' \
+              --exclude='loot' \
+              --exclude='maps' \
+              --exclude='secrets.conf' \
+              --exclude='*.pyc' \
+              --exclude='__pycache__' \
+              --exclude='firmware_cache' \
+              -czf dist/niomi-${TAG}.tar.gz .
+          # Also a zip for Windows users
+          zip -r dist/niomi-${TAG}.zip . \
+              -x '.git/*' \
+              -x '.venv/*' \
+              -x 'loot/*' \
+              -x 'maps/*' \
+              -x 'secrets.conf' \
+              -x '*.pyc' \
+              -x '*/__pycache__/*' \
+              -x 'firmware_cache/*'
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
