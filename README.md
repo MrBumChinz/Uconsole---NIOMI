@@ -31,12 +31,18 @@ Community platform: [soulcage.win](https://soulcage.win) — claim territory, ea
 ### Quick Install (uConsole / Raspberry Pi OS / Debian)
 
 ```bash
-git clone https://github.com/soulcage/niomi ~/python/niomi
+curl -sL https://mrbumchinz.github.io/Uconsole---NIOMI/install | sudo bash
+```
+
+Clones to `~/python/niomi/`, creates a Python virtual environment, installs all dependencies, and adds a **NIOMI** desktop launcher.
+
+Or manually:
+
+```bash
+git clone https://github.com/MrBumChinz/Uconsole---NIOMI.git ~/python/niomi
 cd ~/python/niomi
 sudo bash setup.sh
 ```
-
-The installer creates a Python virtual environment, installs all dependencies, and adds a desktop launcher.
 
 > **Optimized for [ClockworkPi uConsole](https://www.clockworkpi.com/uconsole)** — runs on 640x360 display at 30 FPS. Designed for field use with integrated hardware modules.
 
