@@ -138,7 +138,7 @@ def preflight():
 
     # Something missing — show status
     print()
-    print("  ESP32 Watch Dogs — Startup Check")
+    print("  NIOMI — Startup Check")
     print("  " + "=" * 38)
     print()
 
@@ -296,7 +296,7 @@ def _diagnostic_block() -> str:
     # Format as plain text (no markdown fences — the outer formatter
     # in --bugreport adds its own ``` block)
     width = max(len(k) for k, _ in info) + 1
-    lines = ["=== WATCH DOGS GO — DIAGNOSTIC INFO ==="]
+    lines = ["=== NIOMI — DIAGNOSTIC INFO ==="]
     for k, v in info:
         lines.append(f"  {k.ljust(width)}: {v}")
     lines.append("=======================================")
@@ -304,7 +304,7 @@ def _diagnostic_block() -> str:
 
 
 def _setup_logging():
-    """Configure logging to ~/.watchdogs/last_run.log so bug reports
+    """Configure logging to ~/.niomi/last_run.log so bug reports
     have stack traces. Stdout is preserved for the boot screen.
 
     The log starts with a clearly-marked '=== SESSION START ===' block
@@ -318,7 +318,14 @@ def _setup_logging():
 
     home, sudo_user = _resolve_user_home()
 
-    log_dir = Path(home) / ".watchdogs"
+    log_dir = Path(home) / ".niomi"
+    # Migrate legacy ~/.watchdogs/ log dir on first run
+    legacy_log_dir = Path(home) / ".watchdogs"
+    if legacy_log_dir.is_dir() and not log_dir.exists():
+        try:
+            legacy_log_dir.rename(log_dir)
+        except OSError:
+            pass
     try:
         log_dir.mkdir(parents=True, exist_ok=True)
         # Make sure the dir is owned by the real user, not root
@@ -373,7 +380,7 @@ def _setup_logging():
             f.write("=" * 70 + "\n")
             f.write(diag + "\n")
             f.write("\n")
-        logging.info("Watch Dogs Go starting (pid=%d, user=%s)",
+        logging.info("NIOMI starting (pid=%d, user=%s)",
                      os.getpid(), sudo_user or os.environ.get("USER", "?"))
         logging.info("argv: %s", sys.argv)
     except OSError as e:
@@ -394,7 +401,7 @@ def _print_bugreport():
     """Print the most recent session log formatted for pasting into a
     GitHub issue. Used by `python3 -m watchdogs --bugreport`."""
     home, _ = _resolve_user_home()
-    log_path = Path(home) / ".watchdogs" / "last_run.log"
+    log_path = Path(home) / ".niomi" / "last_run.log"
     if not log_path.exists():
         print("No log file found at", log_path)
         print("Run the game at least once to generate a log.")
@@ -413,7 +420,7 @@ def _print_bugreport():
         if prev_line != -1 and "=" * 30 in text[prev_line:start]:
             start = prev_line + 1
         print()
-        print("# Watch Dogs Go bug report")
+        print("# NIOMI bug report")
         print()
         print("**Describe the bug:**  <write here>")
         print()
@@ -440,7 +447,7 @@ def main():
     preflight()
 
     # Now safe to import the game
-    from .app import WatchDogsGame
+    from .app import ProjectNiomiApp
     from .serial_manager import detect_esp32_port
 
     serial_port = None
@@ -460,7 +467,7 @@ def main():
     logging.info("Starting game: serial=%s loot=%s",
                  serial_port, loot_path)
     try:
-        WatchDogsGame(serial_port=serial_port, loot_path=loot_path)
+        ProjectNiomiApp(serial_port=serial_port, loot_path=loot_path)
     except Exception:
         logging.exception("Game crashed")
         raise

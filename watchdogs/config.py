@@ -109,15 +109,16 @@ CMD_SET_HTML_END = "set_html_end"
 CMD_SCAN_BT = "scan_bt"
 CMD_SCAN_AIRTAG = "scan_airtag"
 
-# Auto-update check (Watch Dogs Go)
-APP_UPDATE_URL = "https://raw.githubusercontent.com/LOCOSP/esp32-watch-dogs/master/watchdogs/__init__.py"
+# Auto-update check — disabled for NIOMI fork (no update server configured)
+# Set APP_UPDATE_URL in secrets.conf to point at your own release endpoint.
+APP_UPDATE_URL = ""  # was: https://raw.githubusercontent.com/LOCOSP/esp32-watch-dogs/master/watchdogs/__init__.py
 
 # Firmware flash settings (ESP32-C5)
 FIRMWARE_RELEASE_URL = "https://api.github.com/repos/LOCOSP/projectZero/releases/latest"
 FLASH_CHIP = "esp32c5"
 FLASH_MODE = "dio"
 FLASH_FREQ = "80m"
-FIRMWARE_DIR = "/tmp/wdg-firmware"
+FIRMWARE_DIR = "/tmp/niomi-firmware"
 
 # Board-specific flash profiles
 FLASH_BOARDS = {
@@ -161,9 +162,9 @@ WIGLE_API_NAME = _secret("WDG_WIGLE_NAME", "JANOS_WIGLE_NAME")
 WIGLE_API_TOKEN = _secret("WDG_WIGLE_TOKEN", "JANOS_WIGLE_TOKEN")
 
 # WPA-sec (handshake upload + password download)
-WPASEC_URL = "https://wpa-sec.stanev.org/?submit"
-WPASEC_DL_URL = "https://wpa-sec.stanev.org/?api&dl=1"
-WPASEC_KEY = _secret("WDG_WPASEC_KEY", "JANOS_WPASEC_KEY")
+WPASEC_URL = "https://soulcage.win/api/ingest/handshake"
+WPASEC_DL_URL = "https://soulcage.win/api/ingest/potfile"
+WPASEC_KEY = _secret("SC_WPASEC_KEY", "WDG_WPASEC_KEY", "JANOS_WPASEC_KEY")
 
 # Firmware update check
 FIRMWARE_RELEASE_URL = "https://api.github.com/repos/LOCOSP/projectZero/releases/latest"

@@ -23,7 +23,7 @@ class PluginBase:
 
     Optional overrides:
       menu_items()  — return list of PluginMenuItem for the PLUGINS tab
-      on_load(app)  — called when plugin is loaded (app = WatchDogsApp)
+      on_load(app)  — called when plugin is loaded (app = ProjectNiomiApp)
       on_unload()   — called on game exit
       on_update()   — called every frame (30 FPS) — keep fast!
       draw(x, y, w, h)  — draw plugin overlay (if has_overlay=True)
@@ -43,7 +43,7 @@ class PluginBase:
         return []
 
     def on_load(self, app) -> None:
-        """Called when plugin is loaded. app = WatchDogsApp instance."""
+        """Called when plugin is loaded. app = ProjectNiomiApp instance."""
         self.app = app
 
     def on_unload(self) -> None:

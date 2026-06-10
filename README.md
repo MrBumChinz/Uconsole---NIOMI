@@ -1,10 +1,10 @@
-# Watch Dogs Go
+# NIOMI — The Black Hat
 
-Open-world hacking RPG with real cybersecurity tooling. A pyxel game frontend for the ESP32-C5 security device, inspired by Watch Dogs aesthetics.
+Open-world hacking RPG with real cybersecurity tooling. A pyxel game frontend for the ESP32-C5 security device. Field operator for the [Soul Cage](https://soulcage.win) platform.
 
-![Watch Dogs Go — main screen](docs/screenshots/01_main_screen.png)
+![NIOMI — main screen](docs/screenshots/01_main_screen.png)
 
-> *Lv.13 GHOST · 203k XP · 21 badges · synced with the wdgwars.pl community server*
+> *Lv.13 GHOST · 203k XP · 21 badges · synced with soulcage.win*
 
 ![Loot Database](docs/screenshots/02_loot.png)
 
@@ -20,21 +20,23 @@ Open-world hacking RPG with real cybersecurity tooling. A pyxel game frontend fo
 
 ![MeshCore Messenger](docs/screenshots/05_meshcore.png)
 
-> *MeshCore Messenger — encrypted off-grid chat over LoRa 869 MHz. Node identity `WDG_locosp` was synced from the wdgwars.pl portal username automatically. 107 contacts visible from a single Polish MeshCore mesh, RSSI from -20dB to -113dB.*
+> *MeshCore Messenger — encrypted off-grid chat over LoRa 869 MHz. Node identity `SC_operator` synced from your soulcage.win username automatically. 107 contacts visible from a single MeshCore mesh, RSSI from -20dB to -113dB.*
 
 ![SCAN menu](docs/screenshots/06_scan_menu.png)
 
 > *SCAN menu — entry point for WiFi and BLE scanning, MAC capture, sniffer modes. The cyber recon operator sprite watches over an arsenal of devices.*
 
-Landing page: [locosp.org](https://locosp.org) — choose your path.
+Community platform: [soulcage.win](https://soulcage.win) — claim territory, earn badges, sync loot.
 
 ### Quick Install (uConsole / Raspberry Pi OS / Debian)
 
 ```bash
-curl -sL https://locosp.github.io/WatchDogsGo/install | sudo bash
+git clone https://github.com/soulcage/niomi ~/python/niomi
+cd ~/python/niomi
+sudo bash setup.sh
 ```
 
-The installer clones the repo to `~/python/esp32-watch-dogs/`, creates a Python virtual environment, installs all dependencies, and adds a desktop launcher.
+The installer creates a Python virtual environment, installs all dependencies, and adds a desktop launcher.
 
 > **Optimized for [ClockworkPi uConsole](https://www.clockworkpi.com/uconsole)** — runs on 640x360 display at 30 FPS. Designed for field use with integrated hardware modules.
 
@@ -43,27 +45,34 @@ The installer clones the repo to `~/python/esp32-watch-dogs/`, creates a Python 
 After installation:
 
 ```bash
-cd ~/python/esp32-watch-dogs
+cd ~/python/niomi
 sudo ./run.sh
 ```
 
-Or double-click **Watch Dogs Go** on your desktop.
+Or double-click **NIOMI** on your desktop.
 
 **On first launch the game will:**
 
 1. Load player profile (XP, level, badges) from `loot/loot_db.json`
 2. Auto-detect ESP32 on `/dev/ttyUSB0` or `/dev/ttyACM0` (no serial = "ESP32 not found", that's OK to test the UI)
 3. Try to open GPS on `/dev/ttyAMA0` (uConsole AIO) or USB GPS — optional
-4. Discover and load plugins from `plugins/` (currently: Wars Sync, JanOS Loot Import)
+4. Discover and load plugins from `plugins/` (currently: Soul Cage Sync, JanOS Loot Import)
 5. Show the cyberdeck UI
 
-**You don't need any API keys to start.** Wars Sync (community server upload) is locked until level 6 (WARDRIVER, 6000 XP) — until then you can play offline.
+**You don't need any API keys to start.** Soul Cage Sync (server upload) is locked until level 6 (WARDRIVER, 6000 XP) — until then you can play offline.
 
-If you want to use the community server (wdgwars.pl), edit `secrets.conf`:
+To sync with Soul Cage, edit `secrets.conf`:
 
 ```bash
 cp secrets.conf.example secrets.conf
 nano secrets.conf
+```
+
+Add your API key from [soulcage.win/profile](https://soulcage.win/profile):
+
+```
+SC_API_KEY=<64-char-hex-key>
+SC_API_URL=https://soulcage.win/api/wardrive/upload/
 ```
 
 ### What gets installed
@@ -175,7 +184,7 @@ A pyxel-based game where you walk around a real-world map while your ESP32 scans
 ## Install
 
 ```bash
-cd ~/python/esp32-watch-dogs
+cd ~/python/niomi
 bash setup.sh
 ```
 
@@ -194,7 +203,7 @@ Requires Python 3.10+ and SDL2 libraries (auto-installed by setup.sh).
 sudo .venv/bin/python3 -m watchdogs
 ```
 
-Or click the **Watch Dogs Go** desktop icon on the uConsole.
+Or click the **NIOMI** desktop icon on the uConsole.
 
 ## Controls
 
@@ -444,8 +453,8 @@ Background mesh chat over LoRa SX1262 (869.618 MHz). Auto-starts with LoRa toggl
 - **Speech bubbles** on map with CB radio sprite when messages arrive
 - **Toast notifications** — always-on-top across all screens with sound
 - **Node discovery** with GPS coordinates saved to loot (dedup by node ID)
-- **Persistent config** — node name + channels saved to `~/.janos_meshcore.json`
-- **Random node name** — auto-generated `WatchDogs-XXXXXX` on first run
+- **Persistent config** — node name + channels saved to `~/.niomi_meshcore.json`
+- **Random node name** — auto-generated `NIOMI_XXXX` on first run
 - **LoRa HUD status** in bottom bar (in line with GPS info)
 
 ### Messenger Controls
@@ -537,15 +546,15 @@ watchdogs/
 
 | File | Location | Purpose |
 |------|----------|---------|
-| `secrets.conf` | Project root | WPA-sec + WiGLE + WDGoWars API keys |
-| `.watchdogs_meshcore.json` | `~/` | MeshCore node name + channels |
-| `.watchdogs_meshcore_key` | `~/` | Ed25519 keypair for MeshCore signing |
+| `secrets.conf` | Project root | WPA-sec + WiGLE + Soul Cage API keys (`SC_API_KEY`, `SC_API_URL`, `SC_WPASEC_KEY`) |
+| `.niomi_meshcore.json` | `~/` | MeshCore node name + channels |
+| `.niomi_meshcore_key` | `~/` | Ed25519 keypair for MeshCore signing |
 | `loot_db.json` | `loot/` | Aggregate stats, XP, badges |
-| `last_run.log` | `~/.watchdogs/` | Game log (rotated to `previous_run.log`) |
+| `last_run.log` | `~/.niomi/` | Game log (rotated to `previous_run.log`) |
 
 ## Troubleshooting & Bug Reports
 
-The game writes a full log to `~/.watchdogs/last_run.log` on every launch
+The game writes a full log to `~/.niomi/last_run.log` on every launch
 (rotated to `previous_run.log` on next start). It contains:
 
 - A clearly-marked `=== SESSION START ===` block with diagnostic info
@@ -560,19 +569,18 @@ The game writes a full log to `~/.watchdogs/last_run.log` on every launch
 The fastest way — let the game format the report for you:
 
 ```bash
-sudo -u $USER python3 -m watchdogs --bugreport > /tmp/wdg-bug.md
-cat /tmp/wdg-bug.md   # review it (no API keys, no GPS, just diagnostics)
+sudo -u $USER python3 -m watchdogs --bugreport > /tmp/niomi-bug.md
+cat /tmp/niomi-bug.md   # review it (no API keys, no GPS, just diagnostics)
 ```
 
-Then open [a new issue](https://github.com/LOCOSP/esp32-watch-dogs/issues/new),
-paste the contents of `wdg-bug.md`, and add:
+Then open a new issue, paste the contents of `niomi-bug.md`, and add:
 
 1. **What you tried to do** (one sentence)
 2. **What happened instead** (one sentence)
 3. **Was the game running before the bug?** Yes / no / hard to say
 
-You can also do it manually if you prefer — just open
-`~/.watchdogs/last_run.log`, scroll to the most recent
+You can also do it manually — just open
+`~/.niomi/last_run.log`, scroll to the most recent
 `=== SESSION START — copy from here for bug reports ===` marker, copy
 everything from that line to the end, and paste it into your issue
 inside a triple-backtick code block.
@@ -581,7 +589,7 @@ inside a triple-backtick code block.
 
 **Game won't start, "ImportError: pyxel"** — re-run setup:
 ```bash
-cd ~/python/esp32-watch-dogs && bash setup.sh
+cd ~/python/niomi && bash setup.sh
 ```
 
 **"Permission denied" on /dev/ttyUSB0** — your user is not in the
@@ -604,45 +612,28 @@ sudo systemctl disable meshtasticd
 The launcher does this automatically on every start, but only if the
 service is installed.
 
-**HTTPS errors when uploading to wdgwars.pl** — check `~/.watchdogs/last_run.log`
+**HTTPS errors when uploading to soulcage.win** — check `~/.niomi/last_run.log`
 for SSL errors. Most often caused by an expired system CA bundle:
 ```bash
 sudo apt-get install --reinstall ca-certificates
 ```
 
-**"Invalid API key (401)"** when adding your wdgwars.pl key — copy
-the key from your profile page on the portal exactly (64 hex chars,
-no quotes, no spaces).
+**"Invalid API key (401)"** when adding your soulcage.win key — copy
+the key from [soulcage.win/profile](https://soulcage.win/profile) exactly
+(64 hex chars, no quotes, no spaces).
 
 ## Community contributions
 
-The game is built around a real ESP32-C5 + AIO v2 setup, but the
-community has worked out alternative paths for hardware that doesn't
-match exactly. These live as opt-in tools maintained by their authors
-— not bundled in this repo, not part of our `setup.sh`, no
-maintenance commitment from us. Use at your own risk.
-
-- **ESP32-less wardriving on uConsole AIO v1** —
-  [`wdg_wifi_bridge.py`](https://github.com/LOCOSP/WatchDogsGo/issues/3)
-  by [@FusedStamen](https://github.com/FusedStamen). Emulates the
-  projectZero serial protocol over a PTY (`/tmp/esp32-pty`) using the
-  host's own WiFi (via `iw`) and Bluetooth (via `bleak`) adapters; the
-  game opens it like a normal ESP32 thanks to the char-device argv
-  detection added in 0.9.7. Optional extras for handshake capture
-  (`airodump-ng` + `hcxpcapngtool`) and packet sniffing (`tcpdump`)
-  are documented in the issue. Full source in the
-  [author's fork](https://github.com/FusedStamen/WatchDogsGo).
-
-If you have a similar setup or contribution worth sharing, open an
-issue with `[community]` in the title and we'll link it here.
+NIOMI is built around a real ESP32-C5 + AIO v2 setup. If you've got it
+working on different hardware or built a compatible bridge tool, open an
+issue on Soul Cage with `[community]` in the title and we'll link it here.
 
 ## Contributing
 
 Pull requests welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for the
 dev environment setup, coding style, and what currently needs help.
-Bug reports go in [GitHub Issues](https://github.com/LOCOSP/esp32-watch-dogs/issues);
-please use `python3 -m watchdogs --bugreport` to generate a paste-ready
-diagnostic block (described above).
+Bug reports: use `python3 -m watchdogs --bugreport` to generate a
+paste-ready diagnostic block (described above).
 
 For the full list of what's working, what's WIP, and what's been fixed,
 see [CHANGELOG.md](CHANGELOG.md).
@@ -653,8 +644,8 @@ see [CHANGELOG.md](CHANGELOG.md).
 additional notice about the legal responsibility of using offensive
 security tooling against systems you don't own.
 
-## Repository
+## Links
 
-- **GitHub** (primary): [github.com/LOCOSP/esp32-watch-dogs](https://github.com/LOCOSP/esp32-watch-dogs)
-- **Landing page**: [locosp.org](https://locosp.org)
-- **Community portal**: [wdgwars.pl](https://wdgwars.pl)
+- **Soul Cage platform**: [soulcage.win](https://soulcage.win)
+- **Your profile & API key**: [soulcage.win/profile](https://soulcage.win/profile)
+- **Territory map**: [soulcage.win/territory](https://soulcage.win/territory)

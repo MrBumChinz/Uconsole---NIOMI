@@ -856,8 +856,8 @@ class LootManager:
     }
 
     _WIGLE_PRE_HEADER = (
-        "WigleWifi-1.4,appRelease=WatchDogsGo,model=uConsole,"
-        "release=1.0,device=WatchDogsGo,display=Pyxel,board=ESP32,"
+        "WigleWifi-1.4,appRelease=NIOMI,model=uConsole,"
+        "release=1.0,device=NIOMI,display=Pyxel,board=ESP32,"
         "brand=LOCOSP,star=Sol,body=3,subBody=0\n"
     )
     _WIGLE_HEADER = (

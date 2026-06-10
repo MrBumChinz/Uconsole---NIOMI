@@ -340,10 +340,10 @@ class MapProjection:
 # Main game
 # ---------------------------------------------------------------------------
 
-class WatchDogsGame:
+class ProjectNiomiApp:
 
     def __init__(self, serial_port=None, loot_path=None):
-        pyxel.init(W, H, title="ESP32 Watch Dogs", fps=FPS,
+        pyxel.init(W, H, title="NIOMI", fps=FPS,
                    quit_key=pyxel.KEY_NONE, display_scale=2)
         try:
             pyxel.fullscreen(True)
@@ -566,10 +566,10 @@ class WatchDogsGame:
         _mc_cfg = load_meshcore_config()
         node_name = _mc_cfg.get("node_name", "")
         # Generate unique name from Ed25519 pubkey if missing OR still on legacy
-        # default ("WatchDogs" with no suffix) — old configs from a buggy default.
-        if not node_name or node_name == "WatchDogs":
+        # default ("WatchDogs" or "NIOMI" with no suffix) — old configs from a buggy default.
+        if not node_name or node_name == "WatchDogs" or node_name == "NIOMI":
             _, pub = self._lora._get_ed25519_keypair()
-            node_name = f"WatchDogs_{pub[:4].hex()}"
+            node_name = f"NIOMI_{pub[:4].hex()}"
             save_meshcore_config(node_name, _mc_cfg.get("_channels", []))
         self._mc_node_name = node_name
         # MeshCore regional preset (EU/UK, US/CA, ...) — picker in ADDONS menu.
@@ -1143,9 +1143,9 @@ class WatchDogsGame:
         for y in range(0, H, 3):
             pyxel.line(0, y, W - 1, y, 1)
 
-        # ── Logo: single line WATCH_DOGS_GO ──
-        cw, ch = 6, 7  # cell size (fits 13 chars + 2 spaces on 640px)
-        word = "WATCH DOGS GO"
+        # ── Logo: single line NIOMI ──
+        cw, ch = 6, 7  # cell size
+        word = "NIOMI"
         # Calculate total width
         logo_w = 0
         for c in word:
@@ -3293,10 +3293,10 @@ class WatchDogsGame:
             return
 
         # Firmware version detection (from boot banner, version cmd, ping)
-        # Match both legacy "JanOS version" and newer "WatchDogsGo version" — the
-        # ESP32 projectZero firmware still emits "JanOS" in older builds.
+        # Match both legacy "JanOS version", "WatchDogsGo version", and current "NIOMI version" —
+        # the ESP32 projectZero firmware still emits older strings on older builds.
         if not self._fw_version:
-            _vm = re.search(r"(?:JanOS|WatchDogsGo) version:\s*v?(\d+\.\d+\.\d+)", s)
+            _vm = re.search(r"(?:JanOS|WatchDogsGo|NIOMI) version:\s*v?(\d+\.\d+\.\d+)", s)
             if not _vm:
                 _vm = re.search(r"APP_MAIN START \(v?(\d+\.\d+\.\d+)\)", s)
             if not _vm:
@@ -5960,7 +5960,7 @@ class WatchDogsGame:
         pyxel.line(dx + 3, dy + 2, dx + dw - 4, dy + 2, C_ERROR)
         # Title (15 chars × 5 = 75px)
         pyxel.text(dx + (dw - 15 * 5) // 2, dy + 8,
-                   "QUIT WATCHDOGS?", C_ERROR)
+                   "QUIT NIOMI?    ", C_ERROR)
         pyxel.line(dx + 2, dy + 20, dx + dw - 3, dy + 20, C_COAST)
         # Subtitle (25 chars × 5 = 125px)
         pyxel.text(dx + (dw - 25 * 5) // 2, dy + 26,

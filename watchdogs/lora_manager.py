@@ -144,23 +144,33 @@ def _user_home() -> str:
 
 
 def _meshcore_config_path() -> str:
-    """Path to MeshCore config JSON. Migrates legacy ~/.janos_meshcore.json
-    to ~/.watchdogs_meshcore.json on first access."""
+    """Path to MeshCore config JSON. Migrates legacy paths on first access:
+    ~/.janos_meshcore.json -> ~/.watchdogs_meshcore.json -> ~/.niomi_meshcore.json"""
     home = _user_home()
-    new_path = os.path.join(home, ".watchdogs_meshcore.json")
+    new_path = os.path.join(home, ".niomi_meshcore.json")
+    watchdogs_path = os.path.join(home, ".watchdogs_meshcore.json")
     legacy_path = os.path.join(home, ".janos_meshcore.json")
-    if not os.path.exists(new_path) and os.path.exists(legacy_path):
-        try:
-            os.rename(legacy_path, new_path)
-            log.info("Migrated %s -> %s", legacy_path, new_path)
-        except OSError as exc:
-            log.warning("Could not migrate legacy meshcore config: %s", exc)
-            return legacy_path  # fall back to reading legacy in-place
+    # Two-step migration: janos -> watchdogs -> niomi
+    if not os.path.exists(new_path):
+        if os.path.exists(watchdogs_path):
+            try:
+                os.rename(watchdogs_path, new_path)
+                log.info("Migrated %s -> %s", watchdogs_path, new_path)
+            except OSError as exc:
+                log.warning("Could not migrate watchdogs meshcore config: %s", exc)
+                return watchdogs_path
+        elif os.path.exists(legacy_path):
+            try:
+                os.rename(legacy_path, new_path)
+                log.info("Migrated %s -> %s", legacy_path, new_path)
+            except OSError as exc:
+                log.warning("Could not migrate legacy meshcore config: %s", exc)
+                return legacy_path
     return new_path
 
 
 def load_meshcore_config() -> dict:
-    """Load ~/.watchdogs_meshcore.json. Returns dict with node_name, channels."""
+    """Load ~/.niomi_meshcore.json. Returns dict with node_name, channels."""
     import json
     path = _meshcore_config_path()
     try:
@@ -189,7 +199,7 @@ def load_meshcore_config() -> dict:
 
 def save_meshcore_config(node_name: str, channels: list,
                          region: str | None = None) -> None:
-    """Save config to ~/.watchdogs_meshcore.json. `region` is a key from
+    """Save config to ~/.niomi_meshcore.json. `region` is a key from
     MESHCORE_PRESETS; None preserves whatever was stored on disk."""
     import json
     path = _meshcore_config_path()
@@ -1428,8 +1438,8 @@ class LoRaManager:
         self._emit(f"  [DM] encrypted (unknown sender)", "dim")
 
     def _get_ed25519_keypair(self):
-        """Load or generate Ed25519 keypair from ~/.watchdogs_meshcore_key.
-        Migrates legacy ~/.janos_meshcore_key on first access."""
+        """Load or generate Ed25519 keypair from ~/.niomi_meshcore_key.
+        Migrates legacy keys (~/.watchdogs_meshcore_key, ~/.janos_meshcore_key) on first access."""
         if self._mc_keypair:
             return self._mc_keypair
 
@@ -1447,18 +1457,28 @@ class LoRaManager:
                 home = pwd.getpwnam(sudo_user).pw_dir
             except KeyError:
                 pass
-        key_path = os.path.join(home, ".watchdogs_meshcore_key")
+        key_path = os.path.join(home, ".niomi_meshcore_key")
+        watchdogs_key_path = os.path.join(home, ".watchdogs_meshcore_key")
         legacy_key_path = os.path.join(home, ".janos_meshcore_key")
 
-        # One-time migration from legacy name
-        if not os.path.isfile(key_path) and os.path.isfile(legacy_key_path):
-            try:
-                os.rename(legacy_key_path, key_path)
-                log.info("Migrated meshcore key: %s -> %s",
-                         legacy_key_path, key_path)
-            except OSError as exc:
-                log.warning("Could not migrate legacy meshcore key: %s", exc)
-                key_path = legacy_key_path  # use legacy in-place
+        # Two-step migration: janos -> watchdogs -> niomi
+        if not os.path.isfile(key_path):
+            if os.path.isfile(watchdogs_key_path):
+                try:
+                    os.rename(watchdogs_key_path, key_path)
+                    log.info("Migrated meshcore key: %s -> %s",
+                             watchdogs_key_path, key_path)
+                except OSError as exc:
+                    log.warning("Could not migrate watchdogs meshcore key: %s", exc)
+                    key_path = watchdogs_key_path
+            elif os.path.isfile(legacy_key_path):
+                try:
+                    os.rename(legacy_key_path, key_path)
+                    log.info("Migrated meshcore key: %s -> %s",
+                             legacy_key_path, key_path)
+                except OSError as exc:
+                    log.warning("Could not migrate legacy meshcore key: %s", exc)
+                    key_path = legacy_key_path
 
         if os.path.isfile(key_path):
             with open(key_path, "rb") as f:

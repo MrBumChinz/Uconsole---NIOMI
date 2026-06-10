@@ -18,11 +18,12 @@ def _env(name: str, default: str) -> str:
 
 
 def get_wpasec_key() -> str:
-    """Return the active WPA-sec key (runtime > env > config)."""
+    """Return the active Soul Cage API key (runtime > env > config)."""
     if _runtime_key:
         return _runtime_key
-    # Try new env var first, then legacy, then config
-    return (os.environ.get("WDG_WPASEC_KEY")
+    # Try Soul Cage key first, then legacy WDG/JANOS names, then config
+    return (os.environ.get("SC_WPASEC_KEY")
+            or os.environ.get("WDG_WPASEC_KEY")
             or os.environ.get("JANOS_WPASEC_KEY")
             or WPASEC_KEY
             or "")
@@ -39,25 +40,27 @@ def wpasec_configured() -> bool:
 
 
 def save_wpasec_key(app_dir: str, key: str) -> None:
-    """Persist the WPA-sec key to secrets.conf as WDG_WPASEC_KEY.
-    Migrates legacy JANOS_WPASEC_KEY entries on the fly."""
+    """Persist the Soul Cage API key to secrets.conf as SC_WPASEC_KEY.
+    Migrates legacy WDG_WPASEC_KEY / JANOS_WPASEC_KEY entries on the fly."""
     conf = Path(app_dir) / "secrets.conf"
     lines: list[str] = []
     found = False
     if conf.is_file():
         for line in conf.read_text(encoding="utf-8").splitlines():
             stripped = line.strip()
-            if stripped.startswith("WDG_WPASEC_KEY=") or stripped.startswith("JANOS_WPASEC_KEY="):
+            if (stripped.startswith("SC_WPASEC_KEY=")
+                    or stripped.startswith("WDG_WPASEC_KEY=")
+                    or stripped.startswith("JANOS_WPASEC_KEY=")):
                 if not found:
-                    lines.append(f"WDG_WPASEC_KEY={key}")
+                    lines.append(f"SC_WPASEC_KEY={key}")
                     found = True
-                # Drop legacy line (replaced by new one above)
+                # Drop legacy lines (replaced by SC_WPASEC_KEY above)
             else:
                 lines.append(line)
     if not found:
         if not lines:
-            lines.append("# Watch Dogs Go secrets (gitignored)")
-        lines.append(f"WDG_WPASEC_KEY={key}")
+            lines.append("# NIOMI The Black Hat secrets (gitignored)")
+        lines.append(f"SC_WPASEC_KEY={key}")
     conf.write_text("\n".join(lines) + "\n", encoding="utf-8")
     set_wpasec_key(key)
 
@@ -81,17 +84,22 @@ def upload_wpasec(pcap_path: Path) -> tuple[bool, str]:
             resp = requests.post(
                 WPASEC_URL,
                 files=files,
-                cookies={"key": key},
+                headers={"X-API-Key": key},
                 timeout=60,
             )
-        if resp.status_code == 200:
-            body = resp.text.strip()
-            if "already" in body.lower():
-                return True, "Already submitted"
-            return True, body[:200] if body else "Uploaded"
+        if resp.status_code in (200, 202):
+            try:
+                data = resp.json()
+                status = data.get("status", "pending")
+                if status == "duplicate":
+                    return True, "Already submitted"
+                job_id = data.get("job_id", "")
+                return True, f"Submitted (job {job_id})" if job_id else "Submitted"
+            except Exception:
+                return True, resp.text[:200] if resp.text else "Submitted"
         return False, f"HTTP {resp.status_code}: {resp.text[:200]}"
     except Exception as exc:
-        log.error("WPA-sec upload error: %s", exc)
+        log.error("Soul Cage upload error: %s", exc)
         return False, str(exc)
 
 
@@ -164,25 +172,46 @@ def download_wpasec_potfile(loot_dir: Path) -> tuple[bool, int, str]:
     try:
         resp = requests.get(
             WPASEC_DL_URL,
-            cookies={"key": key},
+            headers={"X-API-Key": key},
             timeout=30,
         )
         if resp.status_code != 200:
             return False, 0, f"HTTP {resp.status_code}: {resp.text[:200]}"
-        body = resp.text.strip()
-        if not body:
+        data = resp.json()
+        results = data.get("results", [])
+        count = data.get("count", len(results))
+        if not results:
             return True, 0, "No cracked passwords yet"
-        lines = [ln for ln in body.splitlines() if ln.strip()]
-        pwd_dir = loot_dir / "passwords"
-        pwd_dir.mkdir(parents=True, exist_ok=True)
-        out = pwd_dir / "wpasec_cracked.potfile"
-        out.write_text(body + "\n", encoding="utf-8")
-        # Parse and save JSON cache
-        parsed = parse_potfile(out)
+        # Convert Soul Cage JSON format to internal by_ssid dict
+        by_ssid: dict = {}
+        for entry in results:
+            filename = entry.get("filename", "")
+            password = entry.get("password", "")
+            if not password:
+                continue
+            # Extract SSID and BSSID from WatchDogsGo filename (SSID_BSSIDHEX_HHMMSS.pcap)
+            stem = filename.rsplit(".", 1)[0]
+            parts = stem.split("_")
+            bssid_hex = ""
+            ssid_parts = []
+            for part in parts:
+                clean = part.replace("-", "").replace(":", "")
+                if len(clean) == 12 and all(c in "0123456789ABCDEFabcdef" for c in clean):
+                    bssid_hex = ":".join(clean[i:i+2] for i in range(0, 12, 2)).upper()
+                elif part.isdigit() and len(part) == 6:
+                    pass  # timestamp
+                else:
+                    ssid_parts.append(part)
+            ssid = "_".join(ssid_parts) if ssid_parts else stem
+            ap_mac = bssid_hex or "00:00:00:00:00:00"
+            by_ssid.setdefault(ssid, []).append(
+                {"ap_mac": ap_mac, "client_mac": "", "password": password}
+            )
+        parsed = {"by_ssid": by_ssid, "count": count}
         _save_potfile_json(loot_dir, parsed)
-        return True, len(lines), f"{len(lines)} passwords saved"
+        return True, count, f"{count} passwords saved"
     except Exception as exc:
-        log.error("WPA-sec download error: %s", exc)
+        log.error("Soul Cage download error: %s", exc)
         return False, 0, str(exc)
 
 

@@ -1,15 +1,15 @@
-"""Watch Dogs Go Wars Sync — upload wardriving loot to community server.
+"""NIOMI Soul Cage Sync — upload wardriving loot to Soul Cage.
 
 Uploads WiFi/BLE networks, ADS-B aircraft, and MeshCore nodes from
-loot sessions to a wardrive server via HTTPS API with HMAC-SHA256
-signed payloads. Supports auth push (game as 2FA authenticator).
+loot sessions to soulcage.win via HTTPS API with HMAC-SHA256
+signed payloads.
 
 Setup:
-  1. Register on the wardrive server to get an API key
+  1. Register on soulcage.win to get an API key
   2. Add to secrets.conf:
-     WARDRIVE_API_URL=https://your-server.example/api/upload/
-     WARDRIVE_API_KEY=<64-char-hex-key>
-  3. Or set both from the plugin overlay (PLUGINS > Wars Sync > Set URL / Set API Key)
+     SC_API_URL=https://soulcage.win/api/wardrive/upload/
+     SC_API_KEY=<64-char-hex-key>
+  3. Or set both from the plugin overlay (PLUGINS > Soul Cage Sync > Set URL / Set API Key)
 """
 
 import base64
@@ -41,7 +41,7 @@ import platform as _plat
 import sys as _sys
 _PLATFORM = "uConsole" if _plat.system() == "Linux" else _plat.system()
 _PYVER = f"{_sys.version_info.major}.{_sys.version_info.minor}"
-USER_AGENT = (f"WatchDogsGo/{_GAME_VERSION} "
+USER_AGENT = (f"NIOMI/{_GAME_VERSION} "
               f"({_PLATFORM}; Python/{_PYVER})")
 
 
@@ -61,11 +61,11 @@ log = logging.getLogger(__name__)
 BADGE_GAME_TO_SERVER = {
     "wardriver": "wardriver",
     "handshake_hunter": "handshake_hunter",
-    "evil_twin": "evil_twin",
-    "meshcore": "mesh_first",
-    "wpasec_uploader": "wpa_sec_user",
-    "flipper": "flipper_user",
-    "skywatch": "skywatch",
+    "evil_twin": "gemini",
+    "meshcore": "mesh_runner",
+    "wpasec_uploader": "brute_forcer",
+    "flipper": "dolphin_hunter",
+    "skywatch": "bird_watcher",
     "iot_hunter": "iot_hunter",
 }
 # Reverse mapping: server badge → game badge
@@ -101,12 +101,12 @@ def _map_auth(wigle_auth: str) -> str:
     return wigle_auth.strip("[]")
 
 
-DEFAULT_API_URL = "https://wdgwars.pl/api/upload/"
+DEFAULT_API_URL = "https://soulcage.win/api/wardrive/upload/"
 
 
 def _default_endpoint() -> str:
-    """Resolve default server endpoint. Override in secrets.conf with
-    WARDRIVE_API_URL=... if you run your own wardrive server."""
+    """Resolve default Soul Cage endpoint. Override in secrets.conf with
+    SC_API_URL=... if needed."""
     return DEFAULT_API_URL
 
 
@@ -129,7 +129,7 @@ def _load_secrets_conf() -> dict:
 
 
 class WardriveUpload(PluginBase):
-    NAME = "Watch Dogs Go Wars Sync"
+    NAME = "NIOMI Soul Cage Sync"
     VERSION = "2.1"
     AUTHOR = "LOCOSP"
 
@@ -162,7 +162,7 @@ class WardriveUpload(PluginBase):
 
     def menu_items(self) -> list[PluginMenuItem]:
         return [
-            PluginMenuItem("w", "Watch Dogs Go Wars Sync", "open_overlay"),
+            PluginMenuItem("w", "NIOMI Soul Cage Sync", "open_overlay"),
         ]
 
     def on_load(self, app) -> None:
@@ -222,7 +222,7 @@ class WardriveUpload(PluginBase):
                 self._key_input = self._key_input[:-1]
             if pyxel.btnp(pyxel.KEY_RETURN) and len(self._key_input) >= 16:
                 self._api_key = self._key_input
-                self._save_secret("WARDRIVE_API_KEY", self._api_key)
+                self._save_secret("SC_API_KEY", self._api_key)
                 self._log_add(f"API key saved ({len(self._api_key)} chars)", 11)
                 self._entering_key = False
                 self._key_input = ""
@@ -252,7 +252,7 @@ class WardriveUpload(PluginBase):
                 self._api_url = self._url_input
                 if not self._api_url.endswith("/"):
                     self._api_url += "/"
-                self._save_secret("WARDRIVE_API_URL", self._api_url)
+                self._save_secret("SC_API_URL", self._api_url)
                 self._log_add(f"Server URL saved", 11)
                 self._entering_url = False
                 self._url_input = ""
@@ -286,7 +286,7 @@ class WardriveUpload(PluginBase):
         # Title bar
         pyxel.rect(0, 0, w, 12, 1)
         server_short = self._api_url.replace("https://", "").replace("http://", "").rstrip("/") if self._api_url else "no server"
-        pyxel.text(4, 3, f"WARS SYNC — {server_short[:40]}", 3)
+        pyxel.text(4, 3, f"SOUL CAGE SYNC — {server_short[:40]}", 3)
         key_txt = f"KEY:{self._api_key[:8]}..." if self._api_key else "NO KEY"
         key_c = 11 if self._api_key else 8
         pyxel.text(w - 80, 3, key_txt, key_c)
@@ -892,13 +892,13 @@ class WardriveUpload(PluginBase):
                     self.msg(
                         f"[BADGE] Unlocked: {b.upper().replace('_', ' ')}", 11)
 
-        # Sync LoRa node name to portal username (with WDG_ prefix for clarity)
+        # Sync LoRa node name to portal username (with SC_ prefix for clarity)
         if sync_lora_name and username and self.app:
-            target_name = f"WDG_{username}"
+            target_name = f"SC_{username}"
             current = getattr(self.app, "_mc_node_name", "")
             # Only auto-update if user still has the auto-generated name
-            # (starts with "WatchDogs_") or matches an old WDG_ prefix
-            if current.startswith("WatchDogs_") or current.startswith("WDG_"):
+            # (starts with "WatchDogs_", "NIOMI_") or an old WDG_/SC_ prefix
+            if current.startswith("WatchDogs_") or current.startswith("NIOMI_") or current.startswith("WDG_") or current.startswith("SC_"):
                 if current != target_name:
                     self.app._mc_node_name = target_name
                     try:
@@ -969,8 +969,8 @@ class WardriveUpload(PluginBase):
                 pass
         # Load config from secrets.conf
         conf = _load_secrets_conf()
-        self._api_key = conf.get("WARDRIVE_API_KEY", "")
-        self._api_url = conf.get("WARDRIVE_API_URL", "") or _default_endpoint()
+        self._api_key = conf.get("SC_API_KEY", "") or conf.get("WARDRIVE_API_KEY", "")
+        self._api_url = conf.get("SC_API_URL", "") or conf.get("WARDRIVE_API_URL", "") or _default_endpoint()
 
     def _save_state(self):
         try:
@@ -1068,7 +1068,7 @@ class WardriveUpload(PluginBase):
         pyxel.rectb(x0, y0, bw, bh, 10)
         pyxel.rectb(x0 + 2, y0 + 2, bw - 4, bh - 4, 3)
         # Title
-        pyxel.text(cx - 40, y0 + 6, "WEB LOGIN REQUEST", 10)
+        pyxel.text(cx - 46, y0 + 6, "SOUL CAGE LOGIN", 10)
         pyxel.line(x0 + 8, y0 + 16, x0 + bw - 8, y0 + 16, 3)
         # PIN digits in big font
         pin_str = self._auth_pin
