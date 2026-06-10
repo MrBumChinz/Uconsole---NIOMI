@@ -74,7 +74,7 @@ cp secrets.conf.example secrets.conf
 nano secrets.conf
 ```
 
-Add your API key from [soulcage.win/profile](https://soulcage.win/profile):
+Add your API key from [soulcage.win/territory](https://soulcage.win/territory) (Territory page → Captures tab → 🔑 API Key):
 
 ```
 SC_API_KEY=<64-char-hex-key>
@@ -625,8 +625,8 @@ sudo apt-get install --reinstall ca-certificates
 ```
 
 **"Invalid API key (401)"** when adding your soulcage.win key — copy
-the key from [soulcage.win/profile](https://soulcage.win/profile) exactly
-(64 hex chars, no quotes, no spaces).
+the key from [soulcage.win/territory](https://soulcage.win/territory) exactly
+(64 hex chars, no quotes, no spaces — Territory page → Captures tab → 🔑 API Key).
 
 ## Community contributions
 
@@ -653,5 +653,5 @@ security tooling against systems you don't own.
 ## Links
 
 - **Soul Cage platform**: [soulcage.win](https://soulcage.win)
-- **Your profile & API key**: [soulcage.win/profile](https://soulcage.win/profile)
+- **API key (Territory → Captures)**: [soulcage.win/territory](https://soulcage.win/territory)
 - **Territory map**: [soulcage.win/territory](https://soulcage.win/territory)

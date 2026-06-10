@@ -103,7 +103,7 @@ fi
 echo ""
 echo -e "  ${YELLOW}Optional:${NC} edit secrets.conf for Soul Cage API key"
 echo -e "           cp secrets.conf.example secrets.conf && nano secrets.conf"
-echo -e "           SC_API_KEY=<your-key-from-soulcage.win/profile>"
+echo -e "           SC_API_KEY=<your-key-from-soulcage.win/territory (Captures tab > API Key)>"
 echo ""
 echo -e "  ${GREEN}// real hacking is cooler than simulated${NC}"
 echo ""
